@@ -1,0 +1,65 @@
+# Journal de bord — référentiel TVA
+
+## J1 — cadrage, réduction, chargement
+
+**Lecture du kit.** Le CSV et le XLSX sont strictement identiques (comparés cellule à cellule). Le docker-compose expose
+PostgreSQL sur le port hôte **5435**, pas 5432 : première cause d'échec de connexion évitée en lisant le fichier. Le
+« module de validation structurelle » annoncé n'est dans aucune ressource ; décision : demander au formateur, et en
+attendant le réécrire à partir des spécifications nationales (dix pays, format + clé), avec des tests sur des numéros
+publics réels (Danone, Orange, Colruyt, Carlsberg, Nokia, Pirelli, ArcelorMittal, Heineken, Orlen, EDP, Volvo).
+
+**Regarder le fichier avant de coder (`meridian-tva profile`).** Ce que le brief annonce et ce que le jeu contient :
+
+| Brief | Jeu |
+|---|---|
+| « dix pays » | 15 codes `pays_declare` : les 10 pays UE + ZZ, QQ, XX (311 lignes) + GB, UK (208 lignes) |
+| « trois canaux » | 5 valeurs de `source_saisie` |
+| « huit ans » | dates du 01/01/2024 au 01/10/2025 |
+| « 10 000 numéros » | 10 000 lignes, 9 301 numéros distincts non vides, 261 vides |
+
+Le vide a **six formes** (`''`, `' '`, `-`, `N/A`, `null`, `NU.LL`). Blocage évité de justesse : un premier essai avec
+`pandas.read_csv` par défaut donnait 146 vides (il convertit `''`, `N/A` et `null` en NaN et laisse `' '` et `-`) et
+perdait la valeur brute. Retour au module `csv` en texte, détection du vide **avant** normalisation, sinon `N/A` devient
+le faux numéro « NA » et `null` le faux numéro « NULL » (85 faux doublons).
+
+**Normalisation.** 2 140 lignes portent du bruit de saisie (casse, espaces, points, tirets), 532 n'ont pas de préfixe pays.
+Décision : retirer le bruit, ajouter le préfixe depuis `pays_declare`, ne rien réparer (un O n'est pas un 0, un BE à
+9 chiffres n'est pas complété). Chaque décision est comptée : elles font varier le total de valides structurels de
+plusieurs points.
+
+**Clés de contrôle.** Deux erreurs de ma part corrigées par les tests : un numéro suédois mal recopié (Volvo est
+SE556012579001, organisationsnummer 556012-5790), et un exemple néerlandais qui passait par l'ancienne règle mod 11 alors
+qu'il devait tester la nouvelle règle mod 97 (remplacé par NL000000093B12, valide seulement sous mod 97).
+
+**Chargement.** 10 000 lignes en 0,5 s. Verdicts : 6 615 structure valide (66,2 %), 2 605 invalides (clé 1 341, longueur 726,
+caractères 453, format 85), 519 hors périmètre, 261 absents. 6 302 numéros distincts éligibles à VIES : **3 698 appels
+évités (37 %)**. Rechargement immédiat : toujours 10 000 lignes, aucun doublon.
+
+**Mesure de VIES avant la campagne.** Trois appels manuels : Danone valide en 6,7 s, clé fausse « invalide » en 0,12 s,
+numéro inventé « invalide » en 0,58 s. Puis GB → `INVALID_INPUT`, un numéro letton → `MS_UNAVAILABLE` (la Lettonie était
+indisponible dans `check-status`), l'Allemagne valide mais nom et adresse « --- ». La réponse qui contredit l'attente :
+le lien du brief (`GET /rest-api/ms/FR/vat/…`) renvoie `isValid: false` avec `userError: MS_MAX_CONCURRENT_REQ` pour le
+numéro de Danone, qui est valide. Conséquence directe sur le modèle : le verdict ne dérive jamais d'un seul champ, le code
+brut est conservé, et l'indisponibilité est un troisième état, réessayé. Calcul : 6 302 appels à 1,5 s + latence
+(0,1 à 8 s) = 5 à 10 heures pour le référentiel entier ; l'échantillon de 200 sert à la démonstration.
+
+## J2 — vérification en ligne et API
+
+**Campagne échantillon (200 numéros + lignes 101 et 201).** Premier appel : `MS_MAX_CONCURRENT_REQ` sur FR27552032534,
+puis nouvelle tentative après 10 s, puis 20 s. Le piège s'est présenté dès le premier numéro de la campagne réelle : sans
+la logique de nouvelles tentatives et sans l'état « indéterminé », Danone aurait été enregistré invalide. Voir le rapport
+pour les chiffres de la campagne.
+
+**Interception TLS du poste.** `uv sync` et `requests` échouaient en `CERTIFICATE_VERIFY_FAILED` (proxy/antivirus).
+Résolu par `uv sync --native-tls` et `truststore` activé par `NATIVE_TLS=1` : les certificats du système sont utilisés,
+la vérification n'est jamais désactivée.
+
+**API.** Contrat typé (Pydantic) pour que `/docs` dise vrai. Décision sur le cas « VIES injoignable et rien en mémoire » :
+HTTP 200 avec `verdict = indetermine` et le code d'erreur en motif, plutôt qu'un 503 : l'appelant a une réponse explicite à
+traiter comme « ne pas facturer hors taxe ». Avec une valeur périmée en mémoire, elle est servie marquée `perimee` et
+`facturation_hors_taxe_possible = false`.
+
+**Rapport.** Régénéré par `meridian-tva report` depuis les vues SQL ; c'est la seule source des chiffres présentés.
+
+**Test final.** Suppression du dossier, nouveau clone, README déroulé : voir la section correspondante du README et les
+dernières lignes de ce journal après exécution.

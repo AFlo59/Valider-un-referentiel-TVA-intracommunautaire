@@ -110,6 +110,22 @@ def verifier(
     max_age_hours: float = Query(default=settings.verdict_ttl_hours, ge=0, description="au-delà de cet âge, VIES est rappelé"),
     forcer_vies: bool = Query(default=False, description="ignorer la valeur connue et rappeler VIES"),
 ) -> Verification:
+    return _verifier(numero, response, pays, max_age_hours, forcer_vies)
+
+
+@app.get("/verifier", response_model=Verification, tags=["verification"],
+         summary="Même service, numéro passé en paramètre (valeurs brutes avec espaces, barres ou vides)")
+def verifier_query(
+    response: Response,
+    numero: str = Query(description="valeur telle que saisie, ex. ' NL505862176B88 ' ou 'N/A'"),
+    pays: str | None = Query(default=None, min_length=2, max_length=2),
+    max_age_hours: float = Query(default=settings.verdict_ttl_hours, ge=0),
+    forcer_vies: bool = Query(default=False),
+) -> Verification:
+    return _verifier(numero, response, pays, max_age_hours, forcer_vies)
+
+
+def _verifier(numero: str, response: Response, pays: str | None, max_age_hours: float, forcer_vies: bool) -> Verification:
     response.headers["Cache-Control"] = "no-store"
     v = validate(numero, pays)
     structurel = Structurel(verdict=v.verdict, motif=v.motif, detail=v.detail)
