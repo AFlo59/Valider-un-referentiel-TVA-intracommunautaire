@@ -18,7 +18,7 @@ def _env(name: str, default: str) -> str:
 
 @dataclass(frozen=True)
 class Settings:
-    pg_host: str = _env("POSTGRES_HOST", "localhost")
+    pg_host: str = _env("POSTGRES_HOST", "127.0.0.1")
     pg_port: int = int(_env("POSTGRES_PORT", "5435"))
     pg_db: str = _env("POSTGRES_DB", "tva")
     pg_user: str = _env("POSTGRES_USER", "meridian")

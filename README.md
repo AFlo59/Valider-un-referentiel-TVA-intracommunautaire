@@ -91,6 +91,20 @@ facturation.
 - Seuls deux numéros du jeu sont réels (SA DANONE, ligne 101 ; SA ORANGE, ligne 201) : la campagne renverra « valide » pour
   eux et « invalide » pour tous les autres numéros structurellement corrects. C'est attendu, et dit dans le rapport.
 
+## Résultats du 07/09/2026
+
+| Étape | Résultat |
+|---|---|
+| Chargement | 10 000 lignes en 0,5 s ; rechargement : 10 000 → 10 000 (idempotent) |
+| Verdicts structurels (lignes) | 6 615 valides (66,2 %) ; 2 605 invalides (clé 1 341, longueur 726, caractères 453, format 85) ; 519 hors périmètre ; 261 absents |
+| Réduction des appels VIES | 10 000 → **6 302** numéros distincts éligibles (**− 37,0 %**), dont 313 doublons évités |
+| Campagne échantillon (200 numéros + lignes 101 et 201) | 220 appels, 16 min, latence moyenne 1,8 s ; **16 valides, 183 invalides, 1 indéterminé** (`MS_MAX_CONCURRENT_REQ` ×3, réessayé à la relance) |
+| Concordance d'identité | 1 seul valide concordant (SA ORANGE) ; 15 numéros belges existent dans VIES mais désignent d'autres entreprises : à corriger, pas d'exonération |
+| Reprise | relance : « à vérifier maintenant : 6 103 » ; les 199 verdicts définitifs ne sont pas rappelés |
+| API | `/verifier/BE0415621046` → `origine: cache`, `fraicheur: fraiche` ; `/verifier/FR27552032534` → `indetermine` (VIES limite le débit) ; `?max_age_hours=0` → nouvel appel VIES |
+
+Le rapport complet est dans `docs/rapport-reconciliation.md` (régénéré par `uv run meridian-tva report`).
+
 ## Structure du dépôt
 
 ```

@@ -109,12 +109,22 @@ def build_report(settings: Settings) -> str:
                    count(*) FILTER (WHERE request_identifier IS NOT NULL) AS avec_num_consultation
             FROM etat_vies_courant GROUP BY 1, 2 ORDER BY 3 DESC""",
             ["État", "Code VIES", "Numéros", "Latence moyenne (ms)", "Latence max (ms)", "Avec n° de consultation"]) + "\n")
-        parts.append(_table(cur, """
+        cur.execute("""
             SELECT e.numero_normalise, v.nom, replace(v.adresse, E'\\n', ', ') AS adresse, to_char(v.verifie_le, 'DD/MM/YYYY HH24:MI') AS verifie_le,
-                   string_agg(l.id::text, ', ' ORDER BY l.id) AS lignes
+                   string_agg(DISTINCT l.raison_sociale, ' | ') AS raison_sociale, string_agg(l.id::text, ', ' ORDER BY l.id) AS lignes
             FROM etat_numeros e JOIN etat_vies_courant v USING (numero_normalise) JOIN lignes_referentiel l USING (numero_normalise)
-            WHERE e.etat_final = 'valide' GROUP BY 1, 2, 3, 4 ORDER BY 1""",
-            ["Numéro valide", "Nom (VIES)", "Adresse (VIES)", "Vérifié le", "Lignes"]) + "\n")
+            WHERE e.etat_final = 'valide' GROUP BY 1, 2, 3, 4 ORDER BY 1""")
+        valides = cur.fetchall()
+        concordants = sum(1 for row in valides if names_match(row[1], row[4]))
+        parts.append(f"**Concordance d'identité.** Sur {len(valides)} numéros valides dans VIES, **{concordants}** {'porte' if concordants == 1 else 'portent'} un nom concordant avec la "
+                     f"raison sociale du référentiel et **{len(valides) - concordants}** {'désigne' if len(valides) - concordants == 1 else 'désignent'} une autre entreprise. Un numéro « valide » "
+                     f"qui n'est pas celui du client facturé n'ouvre aucun droit à l'exonération : ces lignes sont à corriger avec le client "
+                     f"avant toute facture hors taxe (les numéros belges sont attribués séquentiellement, un numéro à clé correcte existe souvent).\n")
+        lines = ["| Numéro valide | Nom (VIES) | Adresse (VIES) | Raison sociale (référentiel) | Concordance | Vérifié le | Lignes |",
+                 "|---|---|---|---|---|---|---|"]
+        for numero, nom, adresse, verifie_le, raison, ids in valides:
+            lines.append(f"| {numero} | {nom or '(non communiqué)'} | {adresse or ''} | {raison} | {'oui' if names_match(nom, raison) else 'NON'} | {verifie_le} | {ids} |")
+        parts.append("\n".join(lines) + "\n")
         restants = _one(cur, "SELECT count(*) FROM etat_numeros WHERE eligible_vies AND etat_final = 'indetermine'")[0]
         parts.append(f"Numéros éligibles restant à trancher (non interrogés ou indéterminés transitoires) : **{restants}**. "
                      f"Relancer `uv run meridian-tva campaign` reprend exactement là : les verdicts définitifs ne sont jamais rappelés.\n")
@@ -130,6 +140,20 @@ def build_report(settings: Settings) -> str:
 def _one_all(cur, sql: str):
     cur.execute(sql)
     return cur.fetchall()
+
+
+LEGAL_FORMS = {"SA", "SAS", "SARL", "NV", "BV", "BVBA", "ASBL", "SPRL", "SRL", "GMBH", "AB", "OY", "A/S", "LDA", "SPA", "SP", "Z", "O.O.", "OOO", "LTD", "SE", "BO"}
+
+
+def names_match(vies_name: str | None, referential_name: str | None) -> bool:
+    """Concordance simple : au moins un mot significatif (hors formes juridiques) commun aux deux noms."""
+    if not vies_name or not referential_name:
+        return False
+
+    def tokens(text: str) -> set[str]:
+        return {t for t in text.upper().replace(",", " ").replace(".", " ").split() if len(t) >= 3 and t not in LEGAL_FORMS}
+
+    return bool(tokens(vies_name) & tokens(referential_name))
 
 
 def write_report(settings: Settings) -> str:

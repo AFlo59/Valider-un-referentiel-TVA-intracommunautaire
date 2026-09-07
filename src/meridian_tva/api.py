@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from . import __version__
 from .campaign import store
 from .config import Settings, enable_native_tls_if_requested
+from .report import names_match
 from .structural import COVERED, validate
 from .vies_client import ViesClient
 
@@ -57,7 +58,8 @@ class Verification(BaseModel):
     nom: str | None
     adresse: str | None
     request_identifier: str | None = Field(description="numéro de consultation VIES (preuve), si le demandeur est configuré")
-    facturation_hors_taxe_possible: bool = Field(description="vrai uniquement si verdict = valide ET fraicheur = fraiche")
+    identite_concordante: bool | None = Field(description="le nom renvoyé par VIES concorde avec la raison sociale (paramètre raison_sociale, sinon celle du référentiel) ; null si non vérifiable")
+    facturation_hors_taxe_possible: bool = Field(description="vrai uniquement si verdict = valide, fraicheur = fraiche et identité non contredite")
 
 
 class Sante(BaseModel):
@@ -79,15 +81,22 @@ def _fraicheur(age: int | None) -> str:
 
 
 def _build(numero: str, verdict: str, origine: str, motif: str, structurel, normalise, pays, verifie_le=None,
-           code_vies=None, nom=None, adresse=None, request_identifier=None) -> Verification:
+           code_vies=None, nom=None, adresse=None, request_identifier=None, raison_sociale: str | None = None) -> Verification:
     age = _age(verifie_le)
     fraicheur = _fraicheur(age)
+    concordance = names_match(nom, raison_sociale) if (verdict == "valide" and nom and raison_sociale) else None
     return Verification(
         numero_saisi=numero, numero_normalise=normalise, pays=pays, verdict=verdict, origine=origine,
         verifie_le=verifie_le, age_secondes=age, fraicheur=fraicheur, motif=motif, code_vies=code_vies,
-        nom=nom, adresse=adresse, request_identifier=request_identifier,
-        facturation_hors_taxe_possible=(verdict == "valide" and fraicheur == "fraiche"),
+        nom=nom, adresse=adresse, request_identifier=request_identifier, identite_concordante=concordance,
+        facturation_hors_taxe_possible=(verdict == "valide" and fraicheur == "fraiche" and concordance is not False),
     )
+
+
+def _raison_sociale_referentiel(cur, normalise: str) -> str | None:
+    cur.execute("SELECT string_agg(DISTINCT raison_sociale, ' | ') FROM lignes_referentiel WHERE numero_normalise = %s", (normalise,))
+    row = cur.fetchone()
+    return row[0] if row else None
 
 
 @app.get("/health", response_model=Sante, tags=["technique"])
@@ -109,8 +118,9 @@ def verifier(
     pays: str | None = Query(default=None, min_length=2, max_length=2, description="pays déclaré, utilisé si le numéro n'a pas de préfixe"),
     max_age_hours: float = Query(default=settings.verdict_ttl_hours, ge=0, description="au-delà de cet âge, VIES est rappelé"),
     forcer_vies: bool = Query(default=False, description="ignorer la valeur connue et rappeler VIES"),
+    raison_sociale: str | None = Query(default=None, description="nom du client facturé, comparé au nom renvoyé par VIES ; à défaut, celui du référentiel"),
 ) -> Verification:
-    return _verifier(numero, response, pays, max_age_hours, forcer_vies)
+    return _verifier(numero, response, pays, max_age_hours, forcer_vies, raison_sociale)
 
 
 @app.get("/verifier", response_model=Verification, tags=["verification"],
@@ -121,11 +131,13 @@ def verifier_query(
     pays: str | None = Query(default=None, min_length=2, max_length=2),
     max_age_hours: float = Query(default=settings.verdict_ttl_hours, ge=0),
     forcer_vies: bool = Query(default=False),
+    raison_sociale: str | None = Query(default=None),
 ) -> Verification:
-    return _verifier(numero, response, pays, max_age_hours, forcer_vies)
+    return _verifier(numero, response, pays, max_age_hours, forcer_vies, raison_sociale)
 
 
-def _verifier(numero: str, response: Response, pays: str | None, max_age_hours: float, forcer_vies: bool) -> Verification:
+def _verifier(numero: str, response: Response, pays: str | None, max_age_hours: float, forcer_vies: bool,
+              raison_sociale: str | None = None) -> Verification:
     response.headers["Cache-Control"] = "no-store"
     v = validate(numero, pays)
     structurel = Structurel(verdict=v.verdict, motif=v.motif, detail=v.detail)
@@ -149,11 +161,12 @@ def _verifier(numero: str, response: Response, pays: str | None, max_age_hours: 
         cached = cur.fetchone()
         cached_age = _age(cached[6]) if cached else None
         usable = cached is not None and cached[2] and cached_age is not None and cached_age <= max_age_hours * 3600
+        raison_sociale = raison_sociale or _raison_sociale_referentiel(cur, normalise)
 
         if usable and not forcer_vies:
             etat, code, _, nom, adresse, rid, verifie_le = cached
             conn.commit()
-            return _build(numero, etat, "cache", code, structurel, normalise, pays_resolu, verifie_le, code, nom, adresse, rid)
+            return _build(numero, etat, "cache", code, structurel, normalise, pays_resolu, verifie_le, code, nom, adresse, rid, raison_sociale)
 
         result = client.check(pays_resolu, v.normalized.body or "")
         store(cur, normalise, result, 1, "api")
@@ -163,14 +176,14 @@ def _verifier(numero: str, response: Response, pays: str | None, max_age_hours: 
 
     if result.definitif and result.etat in ("valide", "invalide"):
         return _build(numero, result.etat, "vies_live", result.code, structurel, normalise, pays_resolu, now,
-                      result.code, result.name, result.address, result.request_identifier)
+                      result.code, result.name, result.address, result.request_identifier, raison_sociale)
 
     # VIES n'a pas tranché
     if cached is not None and cached[2]:
         etat, code, _, nom, adresse, rid, verifie_le = cached
         log.warning("VIES indisponible (%s) pour %s : valeur connue du %s renvoyée comme périmée", result.code, normalise, verifie_le)
         out = _build(numero, etat, "cache", f"VIES indisponible ({result.code}) ; dernière valeur connue", structurel,
-                     normalise, pays_resolu, verifie_le, code, nom, adresse, rid)
+                     normalise, pays_resolu, verifie_le, code, nom, adresse, rid, raison_sociale)
         out.fraicheur = "perimee"
         out.facturation_hors_taxe_possible = False
         return out

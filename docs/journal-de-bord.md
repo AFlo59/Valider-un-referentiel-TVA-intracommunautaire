@@ -46,9 +46,19 @@ brut est conservé, et l'indisponibilité est un troisième état, réessayé. C
 ## J2 — vérification en ligne et API
 
 **Campagne échantillon (200 numéros + lignes 101 et 201).** Premier appel : `MS_MAX_CONCURRENT_REQ` sur FR27552032534,
-puis nouvelle tentative après 10 s, puis 20 s. Le piège s'est présenté dès le premier numéro de la campagne réelle : sans
-la logique de nouvelles tentatives et sans l'état « indéterminé », Danone aurait été enregistré invalide. Voir le rapport
-pour les chiffres de la campagne.
+puis nouvelle tentative après 10 s, puis 20 s, puis indéterminé. Le piège s'est présenté dès le premier numéro de la
+campagne réelle : sans la logique de nouvelles tentatives et sans l'état « indéterminé », Danone aurait été enregistré
+invalide. Résultat : 200 numéros, 220 appels, 16 min, latence moyenne 1,8 s (0,03 s pour une erreur, 7,6 s pour Orange) ;
+**16 valides, 183 invalides, 1 indéterminé**. Relance avec `--include-ids 101 --limit 1` : « à vérifier maintenant : 6 103 »,
+les 199 verdicts définitifs ne sont pas rappelés, Danone est réessayé (encore `MS_MAX_CONCURRENT_REQ` : l'État membre FR
+limitait fortement le débit ce soir-là) et reste indéterminé, ce qui est la bonne réponse.
+
+**La surprise de la campagne : 15 numéros belges « valides » qui ne sont pas nos clients.** Les numéros belges sont
+attribués séquentiellement ; un numéro synthétique à clé correcte a donc de bonnes chances d'exister. VIES répond
+`valid: true` avec le nom d'une autre entreprise (NV PLUTO, BV Batimea…) là où le référentiel dit « Papyrus Distribution
+SARL ». Seul SA ORANGE concorde. Conséquence sur le modèle et le rapport : une colonne de concordance nom VIES / raison
+sociale, et la règle « valide mais non concordant = à corriger avec le client, pas de facture hors taxe ». Un jury qui ne
+voit que « valide » verrait 16 clients exonérables ; il y en a un.
 
 **Interception TLS du poste.** `uv sync` et `requests` échouaient en `CERTIFICATE_VERIFY_FAILED` (proxy/antivirus).
 Résolu par `uv sync --native-tls` et `truststore` activé par `NATIVE_TLS=1` : les certificats du système sont utilisés,
