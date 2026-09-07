@@ -1,0 +1,18 @@
+# Python / uv
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Secrets et configuration locale
+.env
+
+# Journaux
+logs/
+
+# Divers
+.DS_Store
+Thumbs.db

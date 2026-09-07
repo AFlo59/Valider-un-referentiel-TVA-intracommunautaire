@@ -1,0 +1,44 @@
+# Pile complète : PostgreSQL (kit de démarrage fourni, conservé tel quel) + API de consultation.
+# Lancement : docker compose up -d --build      Arrêt : docker compose down (-v pour purger les données)
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: meridian_tva_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-meridian}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-meridian}
+      POSTGRES_DB: ${POSTGRES_DB:-tva}
+    ports:
+      - "${POSTGRES_PORT:-5435}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      # -h localhost force le test en TCP : sans lui, pg_isready répond "prêt" pendant l'initialisation (socket Unix)
+      test: ["CMD-SHELL", "pg_isready -h localhost -U ${POSTGRES_USER:-meridian} -d ${POSTGRES_DB:-tva}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    container_name: meridian_tva_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-tva}
+      POSTGRES_USER: ${POSTGRES_USER:-meridian}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-meridian}
+      VIES_REQUESTER_COUNTRY: ${VIES_REQUESTER_COUNTRY:-}
+      VIES_REQUESTER_NUMBER: ${VIES_REQUESTER_NUMBER:-}
+      VERDICT_TTL_HOURS: ${VERDICT_TTL_HOURS:-24}
+    ports:
+      - "${API_PORT:-8000}:8000"
+
+volumes:
+  pgdata:
