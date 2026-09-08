@@ -4,7 +4,8 @@
   load       charge les 10 000 lignes, normalise, applique le verdict structurel, reconstruit les numéros (idempotent)
   stats      répartition par verdict et motif, réduction du nombre d'appels VIES
   status     disponibilité annoncée des États membres dans VIES (à consulter avant une campagne)
-  campaign   campagne de vérification VIES (mode échantillon : --limit ; reprise automatique)
+  campaign   campagne de vérification VIES (mode échantillon : --limit ; reprise automatique ; --par-pays N pour
+             interroger N États membres en parallèle, un appel à la fois par État)
   report     régénère docs/rapport-reconciliation.md
   api        lance l'API (uvicorn) sur http://127.0.0.1:8000 (documentation : /docs)
 
@@ -96,6 +97,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_camp.add_argument("--delay", type=float, help="temporisation entre appels en secondes (défaut : VIES_DELAY)")
     p_camp.add_argument("--no-retry-undetermined", action="store_true", help="ne réessaie pas les indéterminés transitoires")
     p_camp.add_argument("--max-attempts", type=int, default=3)
+    p_camp.add_argument("--par-pays", type=int, default=1,
+                        help="nombre d'États membres interrogés en parallèle, toujours un seul appel à la fois par État (défaut 1 = séquentiel ; 4 est un bon départ)")
     sub.add_parser("report", help="génère le rapport de réconciliation")
     p_api = sub.add_parser("api", help="lance l'API")
     p_api.add_argument("--host", default="127.0.0.1")
@@ -131,7 +134,8 @@ def main(argv: list[str] | None = None) -> int:
             # Une seule campagne à la fois : deux campagnes en parallèle doubleraient les appels à VIES
             with RunLock(settings.log_dir / "run.lock"):
                 run_campaign(settings, limit=args.limit, include_ids=ids, delay=args.delay,
-                             retry_undetermined=not args.no_retry_undetermined, max_attempts=args.max_attempts)
+                             retry_undetermined=not args.no_retry_undetermined, max_attempts=args.max_attempts,
+                             par_pays=args.par_pays)
         elif args.command == "report":
             text = write_report(settings)
             print(text.split("## 2.")[0])

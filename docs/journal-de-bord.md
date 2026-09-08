@@ -81,3 +81,11 @@ mais deux campagnes en parallèle doubleraient les appels à VIES : verrou d'ex�
 
 **Mémoire.** Conteneurs plafonnés (PostgreSQL 512 MB, API 256 MB), modèle de `.wslconfig` dans `docs/` : la VM WSL2 de
 Docker Desktop avait pris 24 GB après une soirée de constructions d'images.
+
+**Campagne complète, 08/09 matin.** Lancée en séquentiel : 6 103 numéros restants à 4 à 6 s l'un, soit 6 à 9 heures.
+Question posée : peut-on contourner la lenteur par un « JSON caché » du site ? Non : l'interface web appelle le même
+endpoint, VIES ne possède aucune base (il relaie chaque appel au registre national) et il n'existe aucun dump. Ce qui est
+légitime : la limite étant par État membre, un worker par État avec un seul appel à la fois par registre. Implémenté
+(`--par-pays N`, `ThreadPoolExecutor`, une session HTTP et une connexion par worker, limite `--limit` partagée, arrêt
+propre sur Ctrl+C ou code bloquant, avertissement si `GLOBAL_MAX_CONCURRENT_REQ`). Le verrou d'exécution reste valable :
+un seul processus, plusieurs threads.

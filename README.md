@@ -37,6 +37,7 @@ uv run meridian-tva load           # charge les 10 000 lignes, verdict structure
 uv run meridian-tva stats          # répartition par motif, appels VIES évités
 uv run meridian-tva status         # États membres indisponibles dans VIES en ce moment
 uv run meridian-tva campaign --limit 200 --include-ids 101,201   # mode échantillon (quelques minutes) ; Ctrl+C puis relance = reprise
+uv run meridian-tva campaign --par-pays 4                         # campagne complète : 4 États membres en parallèle, un appel à la fois par État
 uv run meridian-tva report         # docs/rapport-reconciliation.md
 uv run meridian-tva api            # http://127.0.0.1:8000/docs
 ```
@@ -82,8 +83,12 @@ facturation.
 - Latence de 0,1 s pour un numéro inexistant à 6 à 8 s pour un numéro valide : calibrer sur des numéros faux sous-estime
   le temps d'une campagne d'un facteur 10. À 1,5 s de temporisation plus la latence, la campagne complète demande plusieurs
   heures : elle se lance tôt, l'échantillon de 200 sert à démontrer.
-- La limite de requêtes concurrentes est **globale par État membre**, tous utilisateurs confondus : paralléliser ne fait
-  que provoquer `MS_MAX_CONCURRENT_REQ`. Un seul appel à la fois, attente croissante en cas de limitation.
+- La limite de requêtes concurrentes est **globale par État membre**, tous utilisateurs confondus : deux appels
+  simultanés vers le même registre ne font que provoquer `MS_MAX_CONCURRENT_REQ`. La campagne n'envoie donc jamais plus
+  d'un appel à la fois par État, avec attente croissante en cas de limitation. En revanche, des États différents sont des
+  registres différents : `--par-pays 4` traite quatre États en parallèle et divise la durée d'autant (le jeu en compte
+  dix). Une limite globale au seuil non publié existe aussi : si `GLOBAL_MAX_CONCURRENT_REQ` apparaît, la campagne le
+  signale et il faut réduire `--par-pays`.
 - Le numéro de consultation (`requestIdentifier`), preuve opposable à l'administration, n'est renvoyé que si le numéro de TVA
   du demandeur est transmis (`VIES_REQUESTER_*` dans `.env`).
 - L'Allemagne (et d'autres) ne renvoient ni nom ni adresse (`---`) : un « valide » ne prouve pas l'attribution au client.

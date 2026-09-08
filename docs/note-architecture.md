@@ -4,8 +4,11 @@
 
 Une approche naïve interroge VIES une fois par ligne : 10 000 appels. Mesuré le 07/09/2026, VIES répond en 0,1 s pour un
 numéro inexistant et en 6 à 8 s pour un numéro valide ; la limite de requêtes concurrentes est globale par État membre, donc
-un seul appel à la fois. À 1,5 s de temporisation plus la latence, 10 000 appels représentent 8 à 10 heures, et
-plusieurs milliers d'entre eux seraient inutiles.
+un seul appel à la fois vers un même registre. À 1,5 s de temporisation plus la latence, 10 000 appels représentent 8 à
+10 heures en séquentiel, et plusieurs milliers d'entre eux seraient inutiles. Le volume se réduit d'abord (tableau
+ci-dessous) ; la durée se réduit ensuite en interrogeant plusieurs États en parallèle, chacun toujours un appel à la fois
+(`--par-pays`, quatre par défaut recommandé, dix États dans le jeu) : la campagne complète passe de 6 à 9 heures à
+environ une heure et demie, sans jamais dépasser le rythme accepté par chaque registre.
 
 | Étape (ordre imposé) | Lignes ou numéros | Ce qui est retiré |
 |---|---|---|
