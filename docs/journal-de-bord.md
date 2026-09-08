@@ -117,3 +117,13 @@ nuit.
 **Brexit, vérifié.** `POST check-vat-number` avec `GB` → `INVALID_INPUT` ; `check-status` liste 28 codes dont `XI` et
 sans `GB`. HMRC expose son propre service de vérification, mais il exige désormais des identifiants d'application
 (HTTP 401 `MISSING_CREDENTIALS`) : hors périmètre du brief, mentionné dans le README.
+
+**Pas de boucle sans fin.** Question posée : « sera réessayé » veut-il dire indéfiniment ? Dans une exécution, chaque
+numéro est traité une fois (trois appels au plus). Entre exécutions, les indéterminés revenaient à chaque relance sans
+limite : plafond ajouté, deux exécutions par numéro (`--max-relances 2`, soit six appels), annoncé au démarrage.
+Vérifié en base : chaque numéro traité a exactement une vérification à ce stade.
+
+**14h28 : ancien worker FR arrêté, relance du nouveau code sur tout sauf la France** (`--par-pays 4 --exclure-pays FR`)
+pour les 87 indéterminés BE/DK/NL ; la temporisation adaptative se voit immédiatement (« [BE] temporisation portée à
+8 s »). La France (184 jamais tentés + 262 indéterminés, tous des clients domestiques sans enjeu d'exonération) est
+reportée au soir : `uv run meridian-tva campaign --pays FR`.

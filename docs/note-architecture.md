@@ -64,6 +64,11 @@ Une information vieille de six ou huit mois est donc servie, mais toujours marqu
 | État membre ou service indisponible, débit limité, timeout, erreur réseau | `MS_UNAVAILABLE`, `SERVICE_UNAVAILABLE`, `*_MAX_CONCURRENT_REQ*`, `TIMEOUT`, `HTTP_5xx`, `RESEAU_*` | `definitif = false` : réessayé automatiquement (3 tentatives avec attente croissante dans la campagne, puis à la campagne suivante) |
 | Entrée refusée par VIES | `INVALID_INPUT` | `definitif = true` : pas de nouvel appel, requalification manuelle |
 | Blocage | `IP_BLOCKED`, `VAT_BLOCKED`, `INVALID_REQUESTER_INFO` | arrêt de la campagne, intervention humaine |
+| Indéterminé persistant | même code après 2 exécutions (6 appels) | plus relancé automatiquement (`--max-relances`) : reste indéterminé dans le rapport, décision humaine ou relance explicite aux heures creuses |
+
+Dans une même exécution, un numéro n'est traité qu'une fois (trois appels au plus, espacés par la temporisation
+adaptative du registre). Il n'y a donc jamais de boucle : le nombre total d'appels pour un numéro est borné par
+`max-relances × max-attempts`, six par défaut.
 
 Règle absolue, appliquée dans le code et testée : une indisponibilité n'est **jamais** enregistrée comme une invalidité,
 et un indéterminé n'autorise **jamais** une facture hors taxe. Quand VIES est injoignable et qu'aucune valeur n'est connue,
@@ -85,3 +90,20 @@ code, réponse brute JSONB, `definitif`). La vue `etat_vies_courant` donne la de
 et `etat_lignes` calculent l'état final (structure d'abord, VIES ensuite, indéterminé par défaut). L'état de reprise de la
 campagne est la base elle-même : un commit par numéro, et la sélection des numéros à traiter exclut ceux qui ont un verdict
 définitif. Une interruption (Ctrl+C) est gérée au niveau du programme principal ; la relance reprend exactement là.
+
+## 5. Parallélisme, rythme et garde-fous
+
+- **Un worker par État membre.** La limite de VIES est par registre national ; chaque worker possède sa session HTTP et
+  sa connexion PostgreSQL, et n'envoie jamais deux appels simultanés au même registre. `--par-pays N` fixe le nombre
+  d'États traités en même temps ; quand un État se termine, le suivant prend sa place. La limite `--limit` est partagée
+  entre les workers ; Ctrl+C laisse les appels en cours se terminer ; un code bloquant arrête tous les workers.
+- **Temporisation adaptative par registre.** Base 1,5 s ; doublée à chaque `MS_MAX_CONCURRENT_REQ` (5, 10, 20, 30 s
+  maximum), réduite de 20 % à chaque verdict. Mesuré le 08/09 : IT et LU acceptent 1,5 s, DK répond en 11 s, FR exige
+  20 à 30 s en journée.
+- **Plafond de relances.** Un indéterminé est réessayé à la campagne suivante, deux exécutions au plus (six appels) ;
+  ensuite il reste indéterminé et la campagne l'annonce au démarrage.
+- **Une seule campagne à la fois.** Verrou de fichier (`logs/run.lock`) : deux campagnes en parallèle doubleraient les
+  appels ; la seconde est refusée (code de sortie 3). Le verrou couvre aussi un comportement observé de `uv run` sous
+  Windows, qui exécutait deux fois la première commande d'un environnement fraîchement synchronisé.
+- **Filtres.** `--pays FR` ou `--exclure-pays FR` permettent de reporter le registre le plus limité aux heures creuses,
+  sans toucher au reste.

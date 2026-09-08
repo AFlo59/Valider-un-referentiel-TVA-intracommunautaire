@@ -30,7 +30,7 @@ cd meridian-tva
 cp .env.example .env               # renseignez VIES_REQUESTER_COUNTRY / VIES_REQUESTER_NUMBER (numéro de TVA de Meridian) si vous l'avez
 uv sync
 docker compose up -d postgres      # PostgreSQL sur localhost:5435 (port du kit), schéma appliqué automatiquement
-uv run pytest -q                   # 45 tests : normalisation, clés de contrôle, interprétation des réponses VIES
+uv run pytest -q                   # 60 tests : normalisation, clés de contrôle, interprétation des réponses VIES, temporisation adaptative
 
 uv run meridian-tva profile        # phase 1 : regarder le fichier avant de coder (pays, formes, vides)
 uv run meridian-tva load           # charge les 10 000 lignes, verdict structurel + motif, numéros dédoublonnés (idempotent)
@@ -58,8 +58,11 @@ Poste avec interception TLS (`CERTIFICATE_VERIFY_FAILED`) : `uv sync --native-tl
 3. **Chargement** (`load.py`) : `lignes_referentiel` (une ligne par ligne du fichier, clé `id`, valeur brute conservée) et
    `numeros` (un numéro normalisé = une entité, `nb_lignes` compte les doublons). `INSERT ... ON CONFLICT` : un rechargement ne
    duplique rien et ne touche pas à l'historique VIES.
-4. **Campagne VIES** (`campaign.py`) : seuls les numéros éligibles et dédoublonnés sont interrogés, un à la fois, avec
-   temporisation. Chaque réponse est stockée datée, avec son code et sa réponse brute (JSONB). Verdict définitif = jamais
+4. **Campagne VIES** (`campaign.py`) : seuls les numéros éligibles et dédoublonnés sont interrogés. Un worker par État
+   membre, donc jamais plus d'un appel à la fois vers un même registre national, et plusieurs registres en parallèle
+   (`--par-pays`). La temporisation de chaque worker s'adapte : elle double à chaque refus du registre
+   (`MS_MAX_CONCURRENT_REQ`, jusqu'à 30 s) et redescend à chaque verdict. Chaque réponse est stockée datée, avec son code
+   et sa réponse brute (JSONB). Verdict définitif = jamais
    rappelé ; indéterminé transitoire = réessayé à la campagne suivante, mais jamais indéfiniment : au-delà de 2 exécutions
    l'ayant tenté sans verdict (`--max-relances`), le numéro reste indéterminé et la campagne l'annonce au démarrage. Dans
    une même exécution, chaque numéro n'est traité qu'une fois (trois appels au plus). `IP_BLOCKED` arrête la campagne.
@@ -115,7 +118,23 @@ vérifiable, mais ailleurs : l'API de HMRC (`api.service.hmrc.gov.uk/organisatio
 exige désormais des identifiants d'application (réponse `MISSING_CREDENTIALS`, HTTP 401, mesurée le 08/09/2026) ; et une
 vente au Royaume-Uni relève du régime des exportations, pas de la livraison intracommunautaire.
 
-## Résultats du 07/09/2026
+## Résultats du 08/09/2026 (campagne complète, base recréée de zéro)
+
+Séquence : `docker compose down -v`, `docker compose up -d --build`, `uv run meridian-tva load`, puis
+`uv run meridian-tva campaign --par-pays 4 --include-ids 101,201` lancée à 10h34.
+
+| Étape | Résultat |
+|---|---|
+| Chargement sur base neuve | 10 000 lignes ; 6 302 numéros éligibles à VIES |
+| Neuf registres sur dix | terminés en 3 h 10 (5 660 numéros), quatre États en parallèle, un appel à la fois par État |
+| Registre français | 643 numéros, le plus limité en journée (plus d'un appel sur deux refusé à 1,5 s d'intervalle) : traité en dernier, indéterminés réessayés avec la temporisation adaptative |
+| État à 14h30 | 216 valides, 5 574 invalides, 512 indéterminés (dont 442 FR) sur 6 302 éligibles |
+| Concordance d'identité | 216 « valides » dont une poignée concordants (SA ORANGE) : BE, DK, FI et LU attribuent leurs numéros séquentiellement, un numéro synthétique à clé correcte existe souvent pour une autre entreprise |
+| Reprise | chaque relance ne reprend que les indéterminés non encore tentés deux fois ; verdicts définitifs jamais rappelés |
+
+Le rapport complet, avec le tableau par registre, est dans `docs/rapport-reconciliation.md` (régénéré par `uv run meridian-tva report`).
+
+## Résultats du 07/09/2026 (campagne échantillon)
 
 | Étape | Résultat |
 |---|---|
@@ -154,11 +173,15 @@ insertions puis 10 000 mises à jour pour un seul `load`). Un lancement direct p
 ## Structure du dépôt
 
 ```
-src/meridian_tva/   config.py, normalize.py, structural.py, load.py, vies_client.py, campaign.py, report.py, api.py, __main__.py
+src/meridian_tva/   config.py, normalize.py, structural.py, load.py, vies_client.py, campaign.py (workers par État, temporisation
+                    adaptative, plafond de relances), lock.py (une seule exécution à la fois), report.py, api.py, __main__.py
 sql/schema.sql      tables lignes_referentiel, numeros, verifications_vies ; vues etat_vies_courant, etat_numeros, etat_lignes
-tests/              45 tests (normalisation, clés de contrôle des 10 pays sur des numéros réels, interprétation VIES)
+tests/              60 tests (normalisation, clés de contrôle des 10 pays sur des numéros réels, interprétation VIES,
+                    temporisation adaptative et nouvelles tentatives)
 data/               numeros_tva.csv et .xlsx (kit)
-docs/               note-architecture.md, rapport-reconciliation.md (généré), journal-de-bord.md, docker-compose.fourni.yml
+docs/               note-architecture.md, rapport-reconciliation.md (généré), journal-de-bord.md, docker-compose.fourni.yml (kit,
+                    conservé tel quel), wslconfig.example (plafond mémoire de la VM Docker Desktop)
+logs/               journaux, verrou d'exécution, sauvegardes pg_dump éventuelles (hors Git)
 docker-compose.yml  PostgreSQL (kit, port 5435) + API ; Dockerfile de l'API
 ```
 

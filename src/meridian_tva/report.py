@@ -109,6 +109,19 @@ def build_report(settings: Settings) -> str:
                    count(*) FILTER (WHERE request_identifier IS NOT NULL) AS avec_num_consultation
             FROM etat_vies_courant GROUP BY 1, 2 ORDER BY 3 DESC""",
             ["État", "Code VIES", "Numéros", "Latence moyenne (ms)", "Latence max (ms)", "Avec n° de consultation"]) + "\n")
+        parts.append("Par registre national (chaque État membre a son propre rythme et sa propre disponibilité) :\n")
+        parts.append(_table(cur, """
+            SELECT n.pays,
+                   count(*) AS eligibles,
+                   count(v.numero_normalise) AS verifies,
+                   count(*) FILTER (WHERE v.etat = 'valide') AS valides,
+                   count(*) FILTER (WHERE v.etat = 'invalide') AS invalides,
+                   count(*) FILTER (WHERE v.etat = 'indetermine') AS indetermines,
+                   count(*) FILTER (WHERE v.numero_normalise IS NULL) AS jamais_interroges,
+                   round(avg(v.duree_ms)) AS latence_moy_ms
+            FROM numeros n LEFT JOIN etat_vies_courant v USING (numero_normalise)
+            WHERE n.eligible_vies GROUP BY 1 ORDER BY 1""",
+            ["Pays", "Éligibles", "Vérifiés", "Valides", "Invalides", "Indéterminés", "Jamais interrogés", "Latence moyenne (ms)"]) + "\n")
         cur.execute("""
             SELECT e.numero_normalise, v.nom, replace(v.adresse, E'\\n', ', ') AS adresse, to_char(v.verifie_le, 'DD/MM/YYYY HH24:MI') AS verifie_le,
                    string_agg(DISTINCT l.raison_sociale, ' | ') AS raison_sociale, string_agg(l.id::text, ', ' ORDER BY l.id) AS lignes
@@ -134,6 +147,18 @@ def build_report(settings: Settings) -> str:
                      f"{settings.verdict_ttl_hours:g} h puis le revérifie. La facturation doit consulter l'API avant chaque émission hors taxe, "
                      f"et conserver le numéro de consultation VIES (`request_identifier`) sur la facture : il n'est délivré que si le numéro "
                      f"de TVA de Meridian est transmis en tant que demandeur ({'configuré' if settings.vies_requester_number else 'non configuré : à renseigner dans .env'}).\n")
+        parts.append("## 8. Méthode et limites de la vérification en ligne\n")
+        parts.append("- VIES ne possède aucune base : il relaie chaque question au registre de l'État membre concerné, en temps réel, avec la "
+                     "limite de débit de ce registre. Il n'existe ni extraction en masse ni registre européen consolidé.\n"
+                     "- La campagne n'envoie jamais plus d'un appel à la fois à un même registre ; des registres différents sont interrogés en "
+                     "parallèle. La temporisation de chaque registre s'allonge quand il refuse (`MS_MAX_CONCURRENT_REQ`) et revient à la normale "
+                     "ensuite. Un registre indisponible ou saturé produit des indéterminés, jamais des invalides.\n"
+                     "- Un indéterminé est réessayé lors de la campagne suivante, au plus deux fois (six appels) ; au-delà, il reste indéterminé et "
+                     "la ligne apparaît comme telle ici : la décision de facturer avec TVA, ou d'attendre, appartient à la facturation.\n"
+                     "- « Valide » signifie que le numéro existe et est actif dans le registre national à la date indiquée. Il ne signifie pas qu'il "
+                     "appartient au client facturé : la concordance d'identité (section 6) est indispensable, plusieurs registres attribuant "
+                     "leurs numéros séquentiellement.\n"
+                     "- Les numéros britanniques (GB/UK) ne sont plus interrogeables dans VIES depuis le Brexit ; ils sont classés hors périmètre.\n")
         return "\n".join(parts)
 
 
