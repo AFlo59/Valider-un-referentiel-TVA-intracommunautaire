@@ -71,5 +71,13 @@ traiter comme « ne pas facturer hors taxe ». Avec une valeur périmée en mém
 
 **Rapport.** Régénéré par `meridian-tva report` depuis les vues SQL ; c'est la seule source des chiffres présentés.
 
-**Test final.** Suppression du dossier, nouveau clone, README déroulé : voir la section correspondante du README et les
-dernières lignes de ce journal après exécution.
+**Test final.** Suppression du dossier, nouveau clone, `.env`, `docker compose up -d --build` (base + image de l'API),
+`uv sync`, 56 tests, `load`, `campaign --limit 2 --include-ids 201`, `report`, API en conteneur : tout passe. Le test a
+révélé un « avant : 10 000 » sur base vide au premier chargement. Après isolation lanceur par lanceur sur des bases
+vides : dans un environnement tout juste créé par `uv sync`, le premier `uv run meridian-tva …` (uv 0.9.3, Windows)
+exécute la commande deux fois en parallèle (10 000 insertions puis 10 000 mises à jour). L'exécutable direct, `python -m`,
+et un `uv run meridian-tva --help` préalable ne le font pas. Aucune campagne réelle n'a été doublée (journaux vérifiés),
+mais deux campagnes en parallèle doubleraient les appels à VIES : verrou d'exécution ajouté (`lock.py`, code 3).
+
+**Mémoire.** Conteneurs plafonnés (PostgreSQL 512 MB, API 256 MB), modèle de `.wslconfig` dans `docs/` : la VM WSL2 de
+Docker Desktop avait pris 24 GB après une soirée de constructions d'images.

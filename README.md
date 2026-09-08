@@ -105,6 +105,28 @@ facturation.
 
 Le rapport complet est dans `docs/rapport-reconciliation.md` (régénéré par `uv run meridian-tva report`).
 
+## Une seule exécution à la fois
+
+Un verrou (`logs/run.lock`, `msvcrt` sous Windows, `fcntl` ailleurs) refuse un second `load` ou une seconde `campaign`
+pendant qu'une exécution tourne : deux campagnes en parallèle doubleraient les appels à VIES, dont la limite de requêtes
+concurrentes est globale par État membre. Le second processus s'arrête avec le code 3. Le verrou est libéré à la fin du
+processus, Ctrl+C compris.
+
+Ce verrou répond aussi à un comportement observé avec `uv` 0.9.3 sous Windows : dans un environnement tout juste créé par
+`uv sync`, le premier `uv run meridian-tva …` lançait la commande deux fois en parallèle (constaté en base : 10 000
+insertions puis 10 000 mises à jour pour un seul `load`). Un lancement direct par `.venv/Scripts/meridian-tva` ou
+`uv run python -m meridian_tva` ne le fait pas, et un premier `uv run meridian-tva --help` suffit à l'éviter.
+
+## Mémoire et ressources
+
+- Conteneurs plafonnés (`deploy.resources.limits`) : PostgreSQL 512 MB, API 256 MB. Le référentiel et son historique VIES
+  pèsent quelques dizaines de MB.
+- Le chargement lit le CSV en une passe (10 000 lignes, moins de 20 MB en mémoire) ; la campagne traite un numéro à la fois
+  et commite après chacun.
+- Docker Desktop tourne dans une machine virtuelle WSL2 qui, sans limite, peut prendre la moitié de la RAM et ne pas la
+  rendre. Modèle de `%USERPROFILE%\.wslconfig` dans `docs/wslconfig.example` (10 GB, récupération progressive) ; il
+  s'applique après `wsl --shutdown`. Après une session : `docker compose down` ; de temps en temps : `docker builder prune`.
+
 ## Structure du dépôt
 
 ```

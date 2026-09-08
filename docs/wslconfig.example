@@ -1,0 +1,12 @@
+# À copier dans %USERPROFILE%\.wslconfig (Windows). Docker Desktop et les distributions Linux partagent cette VM.
+# Sans ce fichier, la VM WSL2 peut monter jusqu'à la moitié de la RAM et ne la rend pas.
+# Prise en compte au prochain redémarrage de WSL : `wsl --shutdown` (arrête aussi les conteneurs), puis relancer Docker Desktop.
+[wsl2]
+memory=10GB
+swap=4GB
+
+[experimental]
+# Rend progressivement à Windows la mémoire que la VM n'utilise plus (WSL >= 2.0)
+autoMemoryReclaim=gradual
+# Disque virtuel compact : l'espace libéré dans la VM est rendu au disque Windows
+sparseVhd=true

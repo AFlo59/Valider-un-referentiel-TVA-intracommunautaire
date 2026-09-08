@@ -8,7 +8,8 @@
   report     régénère docs/rapport-reconciliation.md
   api        lance l'API (uvicorn) sur http://127.0.0.1:8000 (documentation : /docs)
 
-Codes de sortie : 0 succès ; 1 erreur ; 2 campagne arrêtée sur code bloquant ; 130 interruption clavier.
+Codes de sortie : 0 succès ; 1 erreur ; 2 campagne arrêtée sur code bloquant ; 3 une autre exécution est en cours ;
+130 interruption clavier.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from logging.handlers import RotatingFileHandler
 from .campaign import CampaignBlocked, run_campaign
 from .config import Settings, enable_native_tls_if_requested
 from .load import load, read_rows
+from .lock import AlreadyRunning, RunLock
 from .normalize import normalize
 from .report import write_report
 
@@ -114,7 +116,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "load":
             from pathlib import Path
 
-            load(settings, Path(args.file) if args.file else None)
+            with RunLock(settings.log_dir / "run.lock"):
+                load(settings, Path(args.file) if args.file else None)
         elif args.command == "stats":
             stats(settings)
         elif args.command == "status":
@@ -125,8 +128,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{len(availability)} États membres ; indisponibles : {down or 'aucun'}")
         elif args.command == "campaign":
             ids = [int(x) for x in args.include_ids.split(",")] if args.include_ids else None
-            run_campaign(settings, limit=args.limit, include_ids=ids, delay=args.delay,
-                         retry_undetermined=not args.no_retry_undetermined, max_attempts=args.max_attempts)
+            # Une seule campagne à la fois : deux campagnes en parallèle doubleraient les appels à VIES
+            with RunLock(settings.log_dir / "run.lock"):
+                run_campaign(settings, limit=args.limit, include_ids=ids, delay=args.delay,
+                             retry_undetermined=not args.no_retry_undetermined, max_attempts=args.max_attempts)
         elif args.command == "report":
             text = write_report(settings)
             print(text.split("## 2.")[0])
@@ -135,6 +140,9 @@ def main(argv: list[str] | None = None) -> int:
 
             uvicorn.run("meridian_tva.api:app", host=args.host, port=args.port, reload=args.reload)
         return 0
+    except AlreadyRunning as exc:
+        log.error("Refus : %s. Attendez la fin de l'autre exécution ou supprimez le verrou si elle a planté.", exc)
+        return 3
     except KeyboardInterrupt:
         log.warning("Interruption clavier : l'état est en base, relancez la même commande pour reprendre.")
         return 130

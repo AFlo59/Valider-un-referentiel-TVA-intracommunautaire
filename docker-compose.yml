@@ -20,6 +20,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    # Plafond mémoire : 10 000 lignes et leur historique VIES pèsent quelques dizaines de MB (shared_buffers par défaut : 128 MB)
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   api:
     build: .
@@ -39,6 +44,10 @@ services:
       VERDICT_TTL_HOURS: ${VERDICT_TTL_HOURS:-24}
     ports:
       - "${API_PORT:-8000}:8000"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
 volumes:
   pgdata:
