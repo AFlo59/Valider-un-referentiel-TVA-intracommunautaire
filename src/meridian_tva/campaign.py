@@ -65,13 +65,25 @@ VALUES (%(numero)s, %(etat)s, %(code)s, %(definitif)s, %(nom)s, %(adresse)s, %(r
         %(request_identifier)s, %(reponse)s, %(duree_ms)s, %(tentative)s, %(origine)s)
 """
 
+# Un numéro est à traiter s'il n'a jamais été vérifié, ou si sa dernière vérification n'est pas définitive ET qu'il n'a
+# pas déjà été tenté max_runs fois (une ligne de verifications_vies par exécution). Sans ce plafond, un registre qui
+# refuse toujours ferait revenir les mêmes numéros à chaque relance, indéfiniment.
 SELECT_PENDING = """
 SELECT n.numero_normalise, n.pays
 FROM numeros n
 LEFT JOIN etat_vies_courant v USING (numero_normalise)
+LEFT JOIN (SELECT numero_normalise, count(*) AS relances FROM verifications_vies GROUP BY 1) t USING (numero_normalise)
 WHERE n.eligible_vies
-  AND (v.numero_normalise IS NULL OR (NOT v.definitif AND %(retry)s))
+  AND (v.numero_normalise IS NULL OR (NOT v.definitif AND %(retry)s AND coalesce(t.relances, 0) < %(max_runs)s))
 ORDER BY n.numero_normalise
+"""
+
+SELECT_EXHAUSTED = """
+SELECT count(*)
+FROM numeros n
+JOIN etat_vies_courant v USING (numero_normalise)
+JOIN (SELECT numero_normalise, count(*) AS relances FROM verifications_vies GROUP BY 1) t USING (numero_normalise)
+WHERE n.eligible_vies AND NOT v.definitif AND t.relances >= %(max_runs)s
 """
 
 SELECT_BY_IDS = """
@@ -90,9 +102,31 @@ def store(cur, numero: str, result: ViesResult, tentative: int, origine: str) ->
     })
 
 
-def verify_with_retries(client: ViesClient, numero: str, pays: str, delay: float, max_attempts: int,
+class Pace:
+    """Temporisation adaptative d'un worker : s'allonge quand le registre limite le débit, revient vers la base sinon.
+
+    Observé en journée sur le registre français : plus d'un appel sur deux refusé (MS_MAX_CONCURRENT_REQ) à 1,5 s
+    d'intervalle, alors qu'un appel toutes les 20 à 30 s passe. Mieux vaut attendre le bon intervalle que brûler trois
+    tentatives par numéro.
+    """
+
+    def __init__(self, base: float, maximum: float = 30.0):
+        self.base = base
+        self.current = base
+        self.maximum = maximum
+
+    def throttled(self) -> float:
+        self.current = min(self.maximum, max(self.current * 2, 5.0))
+        return self.current
+
+    def settled(self) -> None:
+        self.current = max(self.base, round(self.current * 0.8, 1))
+
+
+def verify_with_retries(client: ViesClient, numero: str, pays: str, delay: "float | Pace", max_attempts: int,
                         stats: CampaignStats | None = None, stop: threading.Event | None = None) -> tuple[ViesResult, int]:
     """Appelle VIES jusqu'à obtenir un résultat définitif ou épuiser les tentatives. Retourne (résultat, tentatives)."""
+    pace = delay if isinstance(delay, Pace) else Pace(delay)
     body = numero[len(pays):]
     result: ViesResult | None = None
     for attempt in range(1, max_attempts + 1):
@@ -100,14 +134,22 @@ def verify_with_retries(client: ViesClient, numero: str, pays: str, delay: float
         if stats is not None:
             stats.calls += 1
             stats.total_ms += result.duree_ms or 0
-        time.sleep(delay)
+        time.sleep(pace.current)
         if result.definitif or result.blocking:
+            if result.definitif:
+                pace.settled()
             return result, attempt
         if stop is not None and stop.is_set():
             return result, attempt
         if attempt < max_attempts:
-            wait = 10 * attempt if "CONCURRENT" in result.code else 5 * attempt
-            log.warning("[%s] %s : %s (tentative %d/%d), nouvelle tentative dans %d s", pays, numero, result.code, attempt, max_attempts, wait)
+            if "CONCURRENT" in result.code:
+                before = pace.current
+                wait = pace.throttled()
+                if wait > before:
+                    log.warning("[%s] débit limité par le registre : temporisation portée à %.0f s", pays, wait)
+            else:
+                wait = 5 * attempt
+            log.warning("[%s] %s : %s (tentative %d/%d), nouvelle tentative dans %.0f s", pays, numero, result.code, attempt, max_attempts, wait)
             time.sleep(wait)
     assert result is not None
     return result, max_attempts
@@ -134,6 +176,7 @@ def _worker(settings: Settings, label: str, items: list[tuple[str, str]], delay:
     """Traite une liste de (numéro, pays) séquentiellement : un appel à la fois vers chaque registre national."""
     stats = CampaignStats(pending_total=len(items))
     client = client or ViesClient(settings)  # une session HTTP et une connexion par worker : ni l'une ni l'autre n'est partageable
+    pace = Pace(delay)
     with psycopg.connect(settings.pg_conninfo) as conn, conn.cursor() as cur:
         for numero, pays in items:
             if stop.is_set():
@@ -141,7 +184,7 @@ def _worker(settings: Settings, label: str, items: list[tuple[str, str]], delay:
             if not shared.take():
                 log.info("[%s] limite de %d numéro(s) atteinte pour cette exécution.", label, shared.limit)
                 break
-            result, attempts = verify_with_retries(client, numero, pays, delay, max_attempts, stats, stop)
+            result, attempts = verify_with_retries(client, numero, pays, pace, max_attempts, stats, stop)
             store(cur, numero, result, attempts, "campagne")
             conn.commit()  # un commit par numéro : l'état de reprise est toujours à jour
             stats.processed += 1
@@ -161,27 +204,43 @@ def _worker(settings: Settings, label: str, items: list[tuple[str, str]], delay:
                 log.error("[%s] code bloquant %s : arrêt de toute la campagne", label, result.code)
                 break
             if stats.processed % 25 == 0:
-                log.info("[%s] progression : %d/%d (valides %d, invalides %d, indéterminés %d)",
-                         label, stats.processed, stats.pending_total, stats.valides, stats.invalides, stats.indetermines)
+                log.info("[%s] progression : %d/%d (valides %d, invalides %d, indéterminés %d, temporisation %.1f s)",
+                         label, stats.processed, stats.pending_total, stats.valides, stats.invalides, stats.indetermines, pace.current)
+    log.info("[%s] terminé : %d numéros, %d appels, temporisation finale %.1f s", label, stats.processed, stats.calls, pace.current)
     return stats
 
 
 def run_campaign(settings: Settings, limit: int | None = None, include_ids: list[int] | None = None,
                  delay: float | None = None, retry_undetermined: bool = True, max_attempts: int = 3,
-                 client: ViesClient | None = None, par_pays: int = 1) -> CampaignStats:
+                 client: ViesClient | None = None, par_pays: int = 1,
+                 pays: list[str] | None = None, exclure_pays: list[str] | None = None,
+                 max_runs: int = 2) -> CampaignStats:
     delay = settings.vies_delay if delay is None else delay
     par_pays = max(1, par_pays)
+    only = {p.strip().upper() for p in pays} if pays else None
+    excluded = {p.strip().upper() for p in exclure_pays} if exclure_pays else set()
 
     with psycopg.connect(settings.pg_conninfo) as conn, conn.cursor() as cur:
         pending: list[tuple[str, str]] = []
         if include_ids:
             cur.execute(SELECT_BY_IDS, {"ids": include_ids})
             pending.extend(cur.fetchall())
-        cur.execute(SELECT_PENDING, {"retry": retry_undetermined})
+        cur.execute(SELECT_PENDING, {"retry": retry_undetermined, "max_runs": max_runs})
         seen = {p[0] for p in pending}
         pending.extend(row for row in cur.fetchall() if row[0] not in seen)
         cur.execute("SELECT count(*) FROM numeros WHERE eligible_vies")
         eligible = cur.fetchone()[0]
+        cur.execute(SELECT_EXHAUSTED, {"max_runs": max_runs})
+        exhausted = cur.fetchone()[0]
+    if exhausted:
+        log.warning("%d numéro(s) déjà tentés %d fois sans verdict : laissés indéterminés, non relancés (--max-relances pour changer le plafond)",
+                    exhausted, max_runs)
+
+    if only or excluded:
+        before = len(pending)
+        pending = [(n, p) for n, p in pending if (only is None or p in only) and p not in excluded]
+        log.info("Filtre pays (%s%s) : %d numéros retenus sur %d", f"seulement {sorted(only)}" if only else "",
+                 f" sauf {sorted(excluded)}" if excluded else "", len(pending), before)
 
     groups: "OrderedDict[str, list[tuple[str, str]]]" = OrderedDict()
     for numero, pays in pending:

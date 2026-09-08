@@ -89,3 +89,31 @@ légitime : la limite étant par État membre, un worker par État avec un seul 
 (`--par-pays N`, `ThreadPoolExecutor`, une session HTTP et une connexion par worker, limite `--limit` partagée, arrêt
 propre sur Ctrl+C ou code bloquant, avertissement si `GLOBAL_MAX_CONCURRENT_REQ`). Le verrou d'exécution reste valable :
 un seul processus, plusieurs threads.
+
+**Campagne complète relancée à 10h34 sur base neuve, 4 États en parallèle.** État à 14h25 (vues SQL) :
+
+| Pays | Vérifiés | Valides | Invalides | Indéterminés | Fenêtre | Latence moyenne |
+|---|---|---|---|---|---|---|
+| BE | 644 | 39 | 548 | 57 | 10h35 → 12h51 | 3,8 s |
+| DK | 620 | 40 | 567 | 13 | 10h34 → 13h30 | 11,1 s |
+| FI | 581 | 55 | 526 | 0 | 10h34 → 10h59 | 1,1 s |
+| FR | 459 / 643 | 2 | 195 | 262 | 10h35 → en cours | 3,9 s |
+| IT | 604 | 0 | 604 | 0 | 10h59 → 11h17 | 0,3 s |
+| LU | 652 | 69 | 583 | 0 | 11h17 → 11h39 | 0,5 s |
+| NL | 619 | 0 | 602 | 17 | 11h39 → 13h11 | 2,8 s |
+| PL | 659 | 4 | 655 | 0 | 12h51 → 13h21 | 0,5 s |
+| PT | 650 | 7 | 643 | 0 | 13h12 → 13h33 | 0,5 s |
+| SE | 630 | 0 | 630 | 0 | 13h21 → 13h45 | 0,7 s |
+
+Le parallélisme est visible dans les fenêtres : quatre États démarrent ensemble, chaque État suivant prend le relais du
+premier terminé. Trois enseignements : (1) chaque registre a son rythme propre, de 0,3 s (IT) à 11 s (DK) ; (2) le
+registre français refuse plus d'un appel sur deux en journée (`MS_MAX_CONCURRENT_REQ`) mais accepte un appel toutes les
+20 à 30 s, d'où une temporisation adaptative par worker (5, 10, 20, 30 s, puis retour progressif) plutôt que trois
+tentatives perdues par numéro ; (3) 216 numéros « valides » pour l'instant, presque tous des numéros existants attribués
+à d'autres entreprises (BE, DK, FI, LU numérotent séquentiellement) : la concordance d'identité du rapport n'est pas un
+détail, c'est le cœur du verdict. Ajout des filtres `--pays` / `--exclure-pays` pour reporter un registre limité à la
+nuit.
+
+**Brexit, vérifié.** `POST check-vat-number` avec `GB` → `INVALID_INPUT` ; `check-status` liste 28 codes dont `XI` et
+sans `GB`. HMRC expose son propre service de vérification, mais il exige désormais des identifiants d'application
+(HTTP 401 `MISSING_CREDENTIALS`) : hors périmètre du brief, mentionné dans le README.

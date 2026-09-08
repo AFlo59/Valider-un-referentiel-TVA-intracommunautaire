@@ -38,6 +38,7 @@ uv run meridian-tva stats          # répartition par motif, appels VIES évité
 uv run meridian-tva status         # États membres indisponibles dans VIES en ce moment
 uv run meridian-tva campaign --limit 200 --include-ids 101,201   # mode échantillon (quelques minutes) ; Ctrl+C puis relance = reprise
 uv run meridian-tva campaign --par-pays 4                         # campagne complète : 4 États membres en parallèle, un appel à la fois par État
+uv run meridian-tva campaign --pays FR --par-pays 1               # ne traiter qu'un État (ou --exclure-pays FR pour reporter le plus limité)
 uv run meridian-tva report         # docs/rapport-reconciliation.md
 uv run meridian-tva api            # http://127.0.0.1:8000/docs
 ```
@@ -59,7 +60,9 @@ Poste avec interception TLS (`CERTIFICATE_VERIFY_FAILED`) : `uv sync --native-tl
    duplique rien et ne touche pas à l'historique VIES.
 4. **Campagne VIES** (`campaign.py`) : seuls les numéros éligibles et dédoublonnés sont interrogés, un à la fois, avec
    temporisation. Chaque réponse est stockée datée, avec son code et sa réponse brute (JSONB). Verdict définitif = jamais
-   rappelé ; indéterminé transitoire = réessayé à la campagne suivante. `IP_BLOCKED` arrête la campagne.
+   rappelé ; indéterminé transitoire = réessayé à la campagne suivante, mais jamais indéfiniment : au-delà de 2 exécutions
+   l'ayant tenté sans verdict (`--max-relances`), le numéro reste indéterminé et la campagne l'annonce au démarrage. Dans
+   une même exécution, chaque numéro n'est traité qu'une fois (trois appels au plus). `IP_BLOCKED` arrête la campagne.
 5. **API** (`api.py`) : `GET /verifier/{numero}?pays=FR&max_age_hours=24` renvoie verdict, `origine` (`vies_live` | `cache` |
    `structurel`), `verifie_le`, `age_secondes`, `fraicheur` (`fraiche` | `perimee` | `aucune`), motif, code VIES, nom et
    adresse, `request_identifier`, et un booléen `facturation_hors_taxe_possible` (vrai uniquement si valide et frais).
@@ -88,13 +91,29 @@ facturation.
   d'un appel à la fois par État, avec attente croissante en cas de limitation. En revanche, des États différents sont des
   registres différents : `--par-pays 4` traite quatre États en parallèle et divise la durée d'autant (le jeu en compte
   dix). Une limite globale au seuil non publié existe aussi : si `GLOBAL_MAX_CONCURRENT_REQ` apparaît, la campagne le
-  signale et il faut réduire `--par-pays`.
+  signale et il faut réduire `--par-pays`. Vérifié en base le 08/09/2026 : les fenêtres BE, DK, FI et FR se chevauchent
+  (démarrage simultané à 10h34), IT prend le relais dès que FI se termine, et ainsi de suite.
+- **Chaque registre a son propre rythme, et il change avec l'heure.** Campagne du 08/09/2026 en journée : IT répond en
+  0,3 s, LU en 0,5 s, DK en 11 s ; le registre français refuse plus d'un appel sur deux à 1,5 s d'intervalle
+  (`MS_MAX_CONCURRENT_REQ`) alors qu'il accepte un appel toutes les 20 à 30 s. La temporisation est donc **adaptative par
+  worker** : elle double à chaque refus (5, 10, 20, 30 s maximum) et redescend de 20 % à chaque verdict obtenu. Le registre
+  le plus limité peut être reporté à la nuit (`--exclure-pays FR`, puis `--pays FR` le soir).
 - Le numéro de consultation (`requestIdentifier`), preuve opposable à l'administration, n'est renvoyé que si le numéro de TVA
   du demandeur est transmis (`VIES_REQUESTER_*` dans `.env`).
 - L'Allemagne (et d'autres) ne renvoient ni nom ni adresse (`---`) : un « valide » ne prouve pas l'attribution au client.
 - `GET /check-status` liste les États membres indisponibles : à consulter avant une campagne (`meridian-tva status`).
 - Seuls deux numéros du jeu sont réels (SA DANONE, ligne 101 ; SA ORANGE, ligne 201) : la campagne renverra « valide » pour
   eux et « invalide » pour tous les autres numéros structurellement corrects. C'est attendu, et dit dans le rapport.
+
+## Numéros britanniques et Brexit
+
+VIES ne connaît plus le Royaume-Uni : `POST check-vat-number` avec `countryCode: GB` renvoie `INVALID_INPUT`
+(vérifié le 08/09/2026), et la liste des États de `check-status` contient `XI` (Irlande du Nord, toujours dans le
+système TVA de l'Union pour les biens) mais pas `GB`. Les 208 lignes GB/UK du référentiel sont donc classées
+« hors périmètre » avec le motif `PAYS_HORS_UE`, et l'API répond `hors_perimetre` pour elles. Un numéro britannique reste
+vérifiable, mais ailleurs : l'API de HMRC (`api.service.hmrc.gov.uk/organisations/vat/check-vat-number/lookup/{vrn}`)
+exige désormais des identifiants d'application (réponse `MISSING_CREDENTIALS`, HTTP 401, mesurée le 08/09/2026) ; et une
+vente au Royaume-Uni relève du régime des exportations, pas de la livraison intracommunautaire.
 
 ## Résultats du 07/09/2026
 

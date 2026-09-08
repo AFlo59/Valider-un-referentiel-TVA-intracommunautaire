@@ -1,14 +1,14 @@
 # Rapport de réconciliation du référentiel TVA
 
-*Généré le 07/09/2026 19:59 UTC par `uv run meridian-tva report`. Dernière vérification VIES : 07/09/2026 19:58 UTC.*
+*Généré le 08/09/2026 08:18 UTC par `uv run meridian-tva report`. Dernière vérification VIES : 08/09/2026 08:00 UTC.*
 
 ## 1. Réponse à la question centrale (par ligne du référentiel)
 
 | État final | Lignes | Part | Signification |
 |---|---|---|---|
-| valide | 16 | 0.2 % | numéro confirmé par VIES à la date indiquée : facturation hors taxe possible si les autres conditions sont réunies |
-| invalide | 2795 | 27.9 % | structure fausse (format ou clé) ou numéro non reconnu par VIES : facturer avec TVA, corriger le référentiel |
-| indetermine | 6409 | 64.1 % | structure correcte mais non confirmé par VIES (non encore interrogé, ou service indisponible) : ne jamais facturer hors taxe sur cette base |
+| valide | 46 | 0.5 % | numéro confirmé par VIES à la date indiquée : facturation hors taxe possible si les autres conditions sont réunies |
+| invalide | 3045 | 30.4 % | structure fausse (format ou clé) ou numéro non reconnu par VIES : facturer avec TVA, corriger le référentiel |
+| indetermine | 6129 | 61.3 % | structure correcte mais non confirmé par VIES (non encore interrogé, ou service indisponible) : ne jamais facturer hors taxe sur cette base |
 | hors_perimetre | 519 | 5.2 % | pays hors UE (GB/UK), code pays inexistant (ZZ, QQ, XX) : à requalifier avec le client, régime export le cas échéant |
 | absent | 261 | 2.6 % | aucun numéro saisi : à collecter auprès du client |
 | **Total** | **10000** | 100 % | |
@@ -24,7 +24,7 @@
 | Structure valide | 6615 | candidats à VIES, avant dédoublonnage |
 | Doublons parmi les candidats | 313 | même numéro normalisé (pays + numéro), vides exclus |
 | **Appels VIES nécessaires** | **6302** | contre 10 000 pour une approche naïve : réduction de 37.0 % |
-| Appels VIES effectués à ce jour | 204 | 200 numéros distincts, latence moyenne 2002 ms |
+| Appels VIES effectués à ce jour | 485 | 478 numéros distincts, latence moyenne 3442 ms |
 
 ## 3. Verdicts structurels et motifs (par ligne)
 
@@ -50,8 +50,8 @@ Traitement de chaque famille de motifs : `OK` → vérification VIES ; `CLE_INVA
 | BE | 959 | 673 | 257 | 0 | 29 |
 | LU | 956 | 677 | 255 | 0 | 24 |
 | SE | 949 | 651 | 271 | 0 | 27 |
-| PT | 947 | 675 | 246 | 0 | 26 |
 | IT | 947 | 642 | 276 | 0 | 29 |
+| PT | 947 | 675 | 246 | 0 | 26 |
 | NL | 947 | 655 | 264 | 0 | 28 |
 | PL | 939 | 685 | 234 | 0 | 20 |
 | FI | 902 | 608 | 265 | 0 | 29 |
@@ -84,11 +84,11 @@ Définition retenue : deux lignes sont des doublons si elles portent le même nu
 
 | État | Code VIES | Numéros | Latence moyenne (ms) | Latence max (ms) | Avec n° de consultation |
 |---|---|---|---|---|---|
-| invalide | INVALID | 183 | 1970 | 5883 | 0 |
-| valide | VALID | 16 | 2503 | 7061 | 0 |
-| indetermine | MS_MAX_CONCURRENT_REQ | 1 | 253 | 253 | 0 |
+| invalide | INVALID | 420 | 3517 | 17013 | 0 |
+| valide | VALID | 45 | 3877 | 10694 | 0 |
+| indetermine | MS_MAX_CONCURRENT_REQ | 13 | 430 | 2202 | 0 |
 
-**Concordance d'identité.** Sur 16 numéros valides dans VIES, **1** porte un nom concordant avec la raison sociale du référentiel et **15** désignent une autre entreprise. Un numéro « valide » qui n'est pas celui du client facturé n'ouvre aucun droit à l'exonération : ces lignes sont à corriger avec le client avant toute facture hors taxe (les numéros belges sont attribués séquentiellement, un numéro à clé correcte existe souvent).
+**Concordance d'identité.** Sur 45 numéros valides dans VIES, **1** porte un nom concordant avec la raison sociale du référentiel et **44** désignent une autre entreprise. Un numéro « valide » qui n'est pas celui du client facturé n'ouvre aucun droit à l'exonération : ces lignes sont à corriger avec le client avant toute facture hors taxe (les numéros belges sont attribués séquentiellement, un numéro à clé correcte existe souvent).
 
 | Numéro valide | Nom (VIES) | Adresse (VIES) | Raison sociale (référentiel) | Concordance | Vérifié le | Lignes |
 |---|---|---|---|---|---|---|
@@ -107,9 +107,38 @@ Définition retenue : deux lignes sont des doublons si elles portent le même nu
 | BE0557669925 | Straps, Jean-Marie | Rue Steenvelt 12, 1180 Uccle | Corvus Distribution BV | NON | 07/09/2026 19:46 | 8524 |
 | BE0559903992 | BV EYE-TEC | Kemelbeekstraat 80/D, 2460 Kasterlee | Vela Trading AB | NON | 07/09/2026 19:46 | 3150 |
 | BE0632645084 | BV Batimea | Bijenstraat 11, 9051 Gent | Papyrus Materials Oy | NON | 07/09/2026 19:49 | 1868 |
+| BE0634782846 | SRL GEMBALIM | Chaussée de Namur 52, 5030 Gembloux | Vela Distribution Lda | NON | 08/09/2026 07:04 | 9475 |
+| BE0644779289 | BV TOTAAL RENOVATIE DELRUE | Marconistraat 5, 8400 Oostende | Kappa Technologies SAS | NON | 08/09/2026 07:04 | 2157 |
+| BE0648617818 | SCS BORIS GILSON ENTREPRISES | Rue Batta SART 150/a, 4845 Jalhay | Ardent Distribution SAS | NON | 08/09/2026 07:04 | 3164 |
+| BE0651797042 | Sawicz, Eva | Rue Joseph Muller 95/A4, 4607 Dalhem | Prima Industries GmbH | NON | 08/09/2026 07:05 | 989 |
+| BE0675387640 | Callens, Katrien | Graaf de Smet de Naeyerlaan 129, 8500 Kortrijk | Global Services GmbH | NON | 08/09/2026 07:06 | 3737, 7399 |
+| BE0675715064 | Leys, Dennis | Kinderstraat 1/GL-R, 2547 Lint | Fabrica Trading A/S | NON | 08/09/2026 07:06 | 2714 |
+| BE0678796595 | Cool, Laurence | Rue du Hoek 10, 1630 Linkebeek | Batavia Materials SARL | NON | 08/09/2026 07:06 | 9586 |
+| BE0684515835 | Kongnaka, Sivilai | Bakendonk 25, 2200 Herentals | Hanse Consulting Sp. z o.o. | NON | 08/09/2026 07:07 | 4866 |
+| BE0684835737 | Geelen, Philippe | Rue du Panorama 13, 4680 Oupeye | Delta Distribution GmbH | NON | 08/09/2026 07:07 | 1060 |
+| BE0686905104 | Limbourg, Dany | Rue de Favarcq 183, 7970 Beloeil | Prima Services Oy | NON | 08/09/2026 07:07 | 2049 |
+| BE0702885556 | Janssen, Laura | Diestersteenweg 404, 3680 Maaseik | Textil Distribution Lda | NON | 08/09/2026 07:08 | 7356 |
+| BE0722907742 | Inem, Fatma | Burgemeester Van Ackerwijk M 3, 9240 Zele | Azur Services SA | NON | 08/09/2026 07:09 | 1588 |
+| BE0724642359 | Moustie, Aron | Louis van Beethovenstraat 45/3, 1070 Anderlecht | Vertex Technologies NV | NON | 08/09/2026 07:09 | 5483 |
+| BE0729774451 | BV JELOBA | Clemenceaustraat 185, 2860 Sint-Katelijne-Waver | Vertex Materials SA | NON | 08/09/2026 07:09 | 8338 |
+| BE0746905443 | BV Team Platteeuw | Kwadestraat 53, 8800 Roeselare | Alpine Distribution Oy | NON | 08/09/2026 07:10 | 7815 |
+| BE0766554376 | BV Reno Solar Screens | Nijverheidsstraat 9 unit 1, 2990 Wuustwezel | Meridian Technologies GmbH | NON | 08/09/2026 07:11 | 2211 |
+| BE0776547257 | Devresse, Cindy | Rue de Nanwet 33, 6922 Wellin | Lumen Industries Lda | NON | 08/09/2026 07:12 | 6280 |
+| BE0781825146 | BV HVDS Management & Consultancy | Vaaltweg 23, 3020 Herent | Vela Distribution Sp. z o.o. | NON | 08/09/2026 07:12 | 6721 |
+| BE0783258370 | CommV BG Concepts | Kwetterstraat 6, 3130 Begijnendijk | Delta Consulting SA | NON | 08/09/2026 07:12 | 2306 |
+| BE0783644786 | Vanhemelryck, Logan | Diesbeekstraat 43, 1654 Beersel | Kappa Distribution Sp. z o.o. | NON | 08/09/2026 07:12 | 4957 |
+| BE0786259828 | BV Vrije Stijl | Oevelenberg 41, 2275 Lille | Verso Trading Sp. z o.o. | NON | 08/09/2026 07:12 | 2127 |
+| BE0797739480 | CommV FGAcademy | Mereldreef 43, 3140 Keerbergen | Meridian Services GmbH | NON | 08/09/2026 07:13 | 1938 |
+| BE0801646305 | BV APOLLO MANAGEMENT & CONSULTING | Hulststraat 110, 3080 Tervuren | Alpine Industries SARL | NON | 08/09/2026 07:13 | 8702 |
+| BE0804675178 | SRL GROSSI RAFAEL | Rue Is. Parmentier 305, 5300 Andenne | Solaris Services GmbH | NON | 08/09/2026 07:15 | 3472 |
+| BE0805234909 | SRL Orion Pax | Rue de la Giloterie 19, 5070 Fosses-la-Ville | Delta Foods Sp. z o.o. | NON | 08/09/2026 07:15 | 1056 |
+| BE0832147459 | BV Individual Light and Technical Solutions | Roosbeeksestraat 31, 3370 Boutersem | Textil Technologies Sp. z o.o. | NON | 08/09/2026 07:16 | 1432 |
+| BE0870549264 | SPRL PATRICK ET SES JARDINS DU LUXEMBOURG | Rue de Liège 2, 5300 Andenne | Orion Transports Sp. z o.o. | NON | 08/09/2026 07:18 | 8208 |
+| BE0871093949 | Van Landuyt, Jan | Bruul 6, 9700 Oudenaarde | Batavia Consulting NV | NON | 08/09/2026 07:19 | 6017 |
+| BE0879769115 | Bossuyt, Kris | Vlasstraat 7, 8780 Oostrozebeke | Prima Logistics BV | NON | 08/09/2026 07:19 | 6321 |
 | FR89380129866 | SA ORANGE | 111 QUAI DU PRESIDENT ROOSEVELT, 92130 ISSY LES MOULINEAUX | SA ORANGE | oui | 07/09/2026 19:58 | 201 |
 
-Numéros éligibles restant à trancher (non interrogés ou indéterminés transitoires) : **6103**. Relancer `uv run meridian-tva campaign` reprend exactement là : les verdicts définitifs ne sont jamais rappelés.
+Numéros éligibles restant à trancher (non interrogés ou indéterminés transitoires) : **5837**. Relancer `uv run meridian-tva campaign` reprend exactement là : les verdicts définitifs ne sont jamais rappelés.
 
 ## 7. Durée de validité d'un verdict
 

@@ -99,6 +99,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_camp.add_argument("--max-attempts", type=int, default=3)
     p_camp.add_argument("--par-pays", type=int, default=1,
                         help="nombre d'États membres interrogés en parallèle, toujours un seul appel à la fois par État (défaut 1 = séquentiel ; 4 est un bon départ)")
+    p_camp.add_argument("--pays", help="ne traiter que ces États, séparés par des virgules (ex. FR,BE)")
+    p_camp.add_argument("--exclure-pays", help="ne pas traiter ces États, séparés par des virgules (ex. FR pour reporter le registre le plus limité)")
+    p_camp.add_argument("--max-relances", type=int, default=2,
+                        help="un indéterminé n'est plus relancé au-delà de ce nombre d'exécutions l'ayant tenté, soit 6 appels au plus (défaut 2) : pas de boucle sans fin")
     sub.add_parser("report", help="génère le rapport de réconciliation")
     p_api = sub.add_parser("api", help="lance l'API")
     p_api.add_argument("--host", default="127.0.0.1")
@@ -135,7 +139,9 @@ def main(argv: list[str] | None = None) -> int:
             with RunLock(settings.log_dir / "run.lock"):
                 run_campaign(settings, limit=args.limit, include_ids=ids, delay=args.delay,
                              retry_undetermined=not args.no_retry_undetermined, max_attempts=args.max_attempts,
-                             par_pays=args.par_pays)
+                             par_pays=args.par_pays, pays=args.pays.split(",") if args.pays else None,
+                             exclure_pays=args.exclure_pays.split(",") if args.exclure_pays else None,
+                             max_runs=args.max_relances)
         elif args.command == "report":
             text = write_report(settings)
             print(text.split("## 2.")[0])

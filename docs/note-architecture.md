@@ -7,8 +7,11 @@ numéro inexistant et en 6 à 8 s pour un numéro valide ; la limite de requête
 un seul appel à la fois vers un même registre. À 1,5 s de temporisation plus la latence, 10 000 appels représentent 8 à
 10 heures en séquentiel, et plusieurs milliers d'entre eux seraient inutiles. Le volume se réduit d'abord (tableau
 ci-dessous) ; la durée se réduit ensuite en interrogeant plusieurs États en parallèle, chacun toujours un appel à la fois
-(`--par-pays`, quatre par défaut recommandé, dix États dans le jeu) : la campagne complète passe de 6 à 9 heures à
-environ une heure et demie, sans jamais dépasser le rythme accepté par chaque registre.
+(`--par-pays`, quatre par défaut recommandé, dix États dans le jeu), sans jamais dépasser le rythme accepté par chaque
+registre. Mesuré le 08/09/2026 en journée avec quatre États en parallèle : neuf registres sur dix terminés en trois
+heures (5 660 numéros), le registre français restant seul en file parce qu'il refuse plus d'un appel sur deux à 1,5 s
+d'intervalle. D'où une temporisation adaptative par worker (doublée à chaque refus jusqu'à 30 s, réduite de 20 % à
+chaque verdict) et des filtres `--pays` / `--exclure-pays` pour reporter le registre le plus limité aux heures creuses.
 
 | Étape (ordre imposé) | Lignes ou numéros | Ce qui est retiré |
 |---|---|---|
