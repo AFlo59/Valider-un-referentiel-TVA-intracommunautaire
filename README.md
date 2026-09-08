@@ -129,7 +129,7 @@ Séquence : `docker compose down -v`, `docker compose up -d --build`, `uv run me
 | Neuf registres sur dix | terminés en 3 h 10 (5 660 numéros), quatre États en parallèle, un appel à la fois par État |
 | Registre français | 643 numéros, le plus limité en journée (plus d'un appel sur deux refusé à 1,5 s d'intervalle) : traité en dernier, indéterminés réessayés avec la temporisation adaptative |
 | État à 14h30 | 216 valides, 5 574 invalides, 512 indéterminés (dont 442 FR) sur 6 302 éligibles |
-| Concordance d'identité | 216 « valides » dont une poignée concordants (SA ORANGE) : BE, DK, FI et LU attribuent leurs numéros séquentiellement, un numéro synthétique à clé correcte existe souvent pour une autre entreprise |
+| Concordance d'identité | 216 « valides », aucun concordant tant que le registre français n'a pas répondu pour Danone et Orange : BE, DK, FI et LU attribuent leurs numéros séquentiellement, un numéro synthétique à clé correcte existe souvent pour une autre entreprise |
 | Reprise | chaque relance ne reprend que les indéterminés non encore tentés deux fois ; verdicts définitifs jamais rappelés |
 
 Le rapport complet, avec le tableau par registre, est dans `docs/rapport-reconciliation.md` (régénéré par `uv run meridian-tva report`).
