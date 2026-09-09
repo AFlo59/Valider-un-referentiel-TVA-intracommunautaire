@@ -128,9 +128,18 @@ Séquence : `docker compose down -v`, `docker compose up -d --build`, `uv run me
 | Chargement sur base neuve | 10 000 lignes ; 6 302 numéros éligibles à VIES |
 | Neuf registres sur dix | terminés en 3 h 10 (5 660 numéros), quatre États en parallèle, un appel à la fois par État |
 | Registre français | 643 numéros, le plus limité en journée (plus d'un appel sur deux refusé à 1,5 s d'intervalle) : traité en dernier, indéterminés réessayés avec la temporisation adaptative |
-| État à 14h30 | 216 valides, 5 574 invalides, 512 indéterminés (dont 442 FR) sur 6 302 éligibles |
-| Concordance d'identité | 216 « valides », aucun concordant tant que le registre français n'a pas répondu pour Danone et Orange : BE, DK, FI et LU attribuent leurs numéros séquentiellement, un numéro synthétique à clé correcte existe souvent pour une autre entreprise |
-| Reprise | chaque relance ne reprend que les indéterminés non encore tentés deux fois ; verdicts définitifs jamais rappelés |
+| Relance de 14h33 (nouveau code) | 503 numéros restants (BE 53, NL 8, FR 442) ; BE et NL terminés en 47 min ; la France seule de 15h20 à 2h39 |
+| Fin de campagne, 09/09 à 2h39 | terminée d'elle-même : 1 061 appels pour 503 numéros, 6 valides, 335 invalides, 162 indéterminés (tous FR, `MS_MAX_CONCURRENT_REQ` après 3 tentatives) |
+| Registre français, mesuré heure par heure | 5 à 20 verdicts par heure l'après-midi, 40 à 48 par heure entre 22h et 1h, malgré une temporisation montée à 30 s : c'est le registre qui plafonne, pas notre rythme |
+| **État final (lignes)** | **236 valides (2,4 %), 8 811 invalides (88,1 %), 173 indéterminés (1,7 %), 519 hors périmètre (5,2 %), 261 absents (2,6 %)** |
+| Concordance d'identité | 222 numéros valides dans VIES, **1 seul concordant** (SA DANONE, ligne 101) ; les 221 autres existent mais désignent d'autres entreprises (BE, DK, FI, LU numérotent séquentiellement). SA ORANGE reste indéterminé, refusé par le registre FR |
+| Reprise et fin | chaque relance ne reprend que les indéterminés tentés moins de deux fois ; 164 numéros éligibles restent indéterminés, dont 353 numéros au total ont atteint le plafond de deux exécutions |
+
+Décision qui en découle : le registre français est le plus lent et le moins disponible, et les 974 lignes FR sont des
+clients domestiques sans enjeu d'exonération intracommunautaire. Pour un état des lieux mensuel, on interroge la France
+la nuit (`--pays FR`, éventuellement `--max-relances 3` pour une troisième chance) ou on l'exclut de la campagne en ligne
+en le disant dans le rapport ; les indéterminés restants sont présentés comme tels à la direction financière, jamais
+comme des valides.
 
 Le rapport complet, avec le tableau par registre, est dans `docs/rapport-reconciliation.md` (régénéré par `uv run meridian-tva report`).
 

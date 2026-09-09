@@ -125,5 +125,20 @@ Vérifié en base : chaque numéro traité a exactement une vérification à ce 
 
 **14h28 : ancien worker FR arrêté, relance du nouveau code sur tout sauf la France** (`--par-pays 4 --exclure-pays FR`)
 pour les 87 indéterminés BE/DK/NL ; la temporisation adaptative se voit immédiatement (« [BE] temporisation portée à
-8 s »). La France (184 jamais tentés + 262 indéterminés, tous des clients domestiques sans enjeu d'exonération) est
-reportée au soir : `uv run meridian-tva campaign --pays FR`.
+8 s »).
+
+**14h33 : relance complète pour vérifier que la campagne se termine.** Au démarrage : « 2 numéros déjà tentés 2 fois
+sans verdict : laissés indéterminés », puis « à vérifier maintenant : 503 sur 3 États ». NL terminé en 4 min, BE en
+47 min, la France seule de 15h20 à 2h39 le 09/09. **La campagne s'est terminée d'elle-même** : 503 numéros, 1 061 appels,
+6 valides, 335 invalides, 162 indéterminés (tous FR).
+
+**Le registre français, heure par heure.** Verdicts obtenus par heure : 5 à 20 l'après-midi (14h à 20h), 27 à 48 le
+soir et la nuit (21h à 1h), avec une temporisation montée à son plafond de 30 s. Même la nuit, le registre ne rend guère
+plus d'un verdict par minute à notre client : c'est lui qui plafonne. Deux conséquences : le coût par numéro français
+(86,7 s en moyenne sur cette relance, retentatives comprises) rend la vérification exhaustive de la France
+disproportionnée pour un référentiel de clients domestiques sans enjeu d'exonération ; et les 162 indéterminés restants
+sont la bonne réponse, pas un échec. Danone est passé « valide » cette nuit ; Orange reste indéterminé.
+
+**État final du référentiel (09/09, 2h40).** 236 lignes valides (2,4 %), 8 811 invalides (88,1 %), 173 indéterminés
+(1,7 %), 519 hors périmètre, 261 absents. 222 numéros valides dans VIES, un seul concordant avec la raison sociale (SA
+DANONE) : la concordance d'identité est le cœur du rapport. 353 numéros ont atteint le plafond de deux exécutions.
